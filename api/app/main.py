@@ -27,19 +27,39 @@ def load_games():
         d = (a - s).total_seconds() / 60.0
         return round(max(d, 0.0), 2)
     df["delay_minutes"] = df.apply(delay, axis=1)
+    df = df.where(df.notna(), None)
     return df
 
 @app.get("/games")
-def get_games(date: str | None = None, team: str | None = None, watched: bool | None = None, minDelay: float = 0):
+def get_games(date: str | None = None, 
+              team: str | None = None, 
+              watched: bool | None = None, 
+              minDelay: float = 0 ):
+    watched_ids = {e["game_id"] for e in WATCH_LOG if e["user_id"] == "demo"}
     df = load_games()
+    df["game_id"] = df["game_id"].astype(str)
+    if watched is True:
+        df = df[df["game_id"].isin(watched_ids)]
+    elif watched is False:
+        df = df[~df["game_id"].isin(watched_ids)]
     if date: df = df[df["date"] == date]
     if team: df = df[(df.home_team == team) | (df.away_team == team)]
     df = df[df["delay_minutes"] >= minDelay]
+    df = df.where(df.notna(), None)
     return df.to_dict(orient="records")
 
 @app.get("/stats/summary")
-def summary(date: str | None = None, team: str | None = None, minDelay: float = 0):
+def summary(date: str | None = None, 
+            team: str | None = None, 
+            minDelay: float = 0,
+            watched: bool | None = None):
+    watched_ids = {e["game_id"] for e in WATCH_LOG if e["user_id"] == "demo"}
     df = load_games()
+    df["game_id"] = df["game_id"].astype(str)
+    if watched is True:
+        df = df[df["game_id"].isin(watched_ids)]
+    elif watched is False:
+        df = df[~df["game_id"].isin(watched_ids)]
     if date: df = df[df["date"] == date]
     if team: df = df[(df.home_team == team) | (df.away_team == team)]
     df = df[df["delay_minutes"] >= minDelay]
