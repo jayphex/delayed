@@ -9,19 +9,22 @@ export default function Home() {
   const [summary, setSummary] = useState<{countDelay: number, avgDelay: number, maxDelay: number} | null>(null);
   const [err, setErr] = useState<string|null>(null);
 
-  async function load() {
+  async function loadGames() {
     try {
       setLoading(true); setErr(null);
       const params = watched === "all" ? "" : `watched=${watched}`;
       setGames(await fetchGames(params));
-      setSummary(await fetchSummary());
     } catch (e:any) { setErr(e.message ?? "error"); }
     finally { setLoading(false); }
   }
 
+  async function loadSummary() {
+    setSummary(await fetchSummary());
+  }
+
   async function onMark(id: string) {
     await markWatched(id);
-    load();
+    loadGames();
   }
 
   return (
@@ -32,15 +35,16 @@ export default function Home() {
           <option value="true">Watched</option>
           <option value="false">Unwatched</option>
         </select>
-        <button onClick={load}>Load Games</button>
+        <button onClick={loadGames}>Load Games</button>
+        <button onClick={loadSummary}>Load Summary</button>
       </div>
       {loading && <p>Loading…</p>}
       {err && <p style={{color:"red"}}>{err}</p>}
       {summary && (
         <p>
-          Amount of Delay: {summary.countDelay} |
-          Average Delay: {summary.avgDelay.toFixed(1)} |
-          Max Delay: {summary.maxDelay}
+          Delayed: {summary.countDelayed} |
+          Average: {summary.avgDelay.toFixed(1)} |
+          Max: {summary.maxDelay}
         </p>
       )}
       <ul>
