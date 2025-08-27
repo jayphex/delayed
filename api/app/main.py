@@ -30,6 +30,10 @@ def load_games():
     df = df.where(df.notna(), None)
     return df
 
+@app.get("/")
+def root():
+    return {"message": "delayed API is running!"}
+
 @app.get("/games")
 def get_games(date: str | None = None, 
               team: str | None = None, 
