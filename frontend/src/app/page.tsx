@@ -33,7 +33,13 @@ export default function Home() {
       setWatchedIDs(new Set(watchLog.map((e: WatchLogEntry) => e.game_id)));
 
       setSummary(await fetchSummary(query));
-    } catch (e:any) { setErr(e.message ?? "error"); }
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setErr(e.message ?? "error");
+      } else {
+        setErr("error");
+      }
+    }
     finally { setLoading(false); }
   }
 
