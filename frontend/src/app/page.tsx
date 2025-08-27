@@ -1,13 +1,12 @@
 "use client";
 import { useState } from "react";
 import { fetchGames, fetchSummary, markWatched, markUnwatched, fetchWatchLog } from "../lib/api";
-import { stringify } from "querystring";
 
 export default function Home() {
-  const [games, setGames] = useState<{game_id: string, home_team: string, away_team: string, delay_minutes: number}[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
   const [watched, setWatched] = useState<"all"|"true"|"false">("all");
   const [loading, setLoading] = useState(false);
-  const [summary, setSummary] = useState<{countDelayed: number, avgDelay: number, maxDelay: number} | null>(null);
+  const [summary, setSummary] = useState<Summary | null>(null);
   const [err, setErr] = useState<string|null>(null);
   const [team, setTeam] = useState<string>("");
   const teams = [
