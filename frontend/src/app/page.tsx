@@ -1,6 +1,6 @@
 "use client";
-import { useState, useSyncExternalStore } from "react";
-import { fetchGames, fetchSummary, markWatched } from "../lib/api";
+import { useState } from "react";
+import { fetchGames, fetchSummary, markWatched, markUnwatched, fetchWatchLog } from "../lib/api";
 
 export default function Home() {
   const [games, setGames] = useState<any[]>([]);
@@ -15,6 +15,7 @@ export default function Home() {
     "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS"
   ];
   const [date, setDate] = useState<string>("");
+  const [watchedIDs, setWatchedIDs] = useState<Set<string>>(new Set());
 
   async function load() {
     try {
@@ -24,14 +25,24 @@ export default function Home() {
       if (team) params.append("team", team);
       if (date) params.append("date", date);
       const query = params.toString();
+
       setGames(await fetchGames(query));
+
+      const watchLog = await fetchWatchLog();
+      setWatchedIDs(new Set(watchLog.map((e: any) => e.game_id)));
+
       setSummary(await fetchSummary(query));
     } catch (e:any) { setErr(e.message ?? "error"); }
     finally { setLoading(false); }
   }
 
-  async function onMark(id: string) {
+  async function onWatch(id: string) {
     await markWatched(id);
+    load();
+  }
+
+  async function onUnwatch(id: string) {
+    await markUnwatched(id);
     load();
   }
 
@@ -44,7 +55,7 @@ export default function Home() {
           <option value="false">Unwatched</option>
         </select>
         <select value={team} onChange={(e=>setTeam(e.target.value))}>
-          <option value="team">All Teams</option>
+          <option value="">All Teams</option>
           {teams.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         <input type="date" value={date} onChange={(e=>setDate(e.target.value))}
@@ -61,13 +72,18 @@ export default function Home() {
         </p>
       )}
       <ul>
-        {games.map((g)=>(
-          <li key={g.game_id} style={{marginBottom:8}}>
-            {g.away_team} @ {g.home_team} — delay {g.delay_minutes} min
-            {" "}
-            <button onClick={()=>onMark(String(g.game_id))}>Mark as watched</button>
-          </li>
-        ))}
+        {games.map((g)=> {
+          const isWatched = watchedIDs.has(g.game_id);
+          return (
+            <li key={g.game_id} style={{marginBottom:8}}>
+              {g.away_team} @ {g.home_team} — delay {g.delay_minutes} min
+              { isWatched 
+                ? <button onClick={()=>onUnwatch(String(g.game_id))}>unWatch</button>
+                : <button onClick={()=>onWatch(String(g.game_id))}>Watch</button>
+              }
+            </li>
+          );
+        })}
       </ul>
     </main>
   );

@@ -87,3 +87,11 @@ def post_watchlog(game_id: str = Body(..., embed=True)):
     }
     WATCH_LOG.append(entry)
     return entry
+
+@app.delete("/watchlog/{game_id}")
+def unwatch_game(game_id: str):
+    global WATCH_LOG
+    before = len(WATCH_LOG)
+    WATCH_LOG = [e for e in WATCH_LOG if e["game_id"] != game_id]
+    after = len(WATCH_LOG)
+    return {"remove": before - after}
