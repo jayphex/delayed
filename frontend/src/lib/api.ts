@@ -1,4 +1,6 @@
-export const API_BASE = "http://localhost:8000";
+import { WatchLogEntry } from "./types";
+
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE!;
 
 export async function fetchGames(params = "") {
   const r = await fetch(`${API_BASE}/games${params ? `?${params}` : ""}`);
@@ -12,13 +14,13 @@ export async function fetchSummary(params = "") {
     return r.json();
 }
 
-export async function fetchWatchLog() {
+export async function fetchWatchLog(): Promise<WatchLogEntry[]> {
   const r = await fetch(`${API_BASE}/watchlog`);
     if (!r.ok) throw new Error("/watchlog failed");
     return r.json();
 }
 
-export async function markWatched(game_id: string) {
+export async function markWatched(game_id: string): Promise<WatchLogEntry> {
   const r = await fetch(`${API_BASE}/watchlog`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -28,7 +30,7 @@ export async function markWatched(game_id: string) {
   return r.json();
 }
 
-export async function markUnwatched(game_id: string) {
+export async function markUnwatched(game_id: string): Promise<{ removed: number }> {
   const r = await fetch(`${API_BASE}/watchlog/${game_id}`, {
     method: "DELETE",
   });

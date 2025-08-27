@@ -1,4 +1,5 @@
 "use client";
+import { Game, Summary, WatchLogEntry } from "../lib/types";
 import { useState } from "react";
 import { fetchGames, fetchSummary, markWatched, markUnwatched, fetchWatchLog } from "../lib/api";
 
@@ -29,7 +30,7 @@ export default function Home() {
       setGames(await fetchGames(query));
 
       const watchLog = await fetchWatchLog();
-      setWatchedIDs(new Set(watchLog.map((e: any) => e.game_id)));
+      setWatchedIDs(new Set(watchLog.map((e: WatchLogEntry) => e.game_id)));
 
       setSummary(await fetchSummary(query));
     } catch (e:any) { setErr(e.message ?? "error"); }
@@ -38,18 +39,16 @@ export default function Home() {
 
   async function onWatch(id: string) {
     await markWatched(id);
-    load();
   }
 
   async function onUnwatch(id: string) {
     await markUnwatched(id);
-    load();
   }
 
   return (
     <main style={{padding:16}}>
       <div style={{display:"flex", gap:8, marginBottom:12}}>
-        <select value={watched} onChange={e=>setWatched(e.target.value as any)}>
+        <select value={watched} onChange={e=>setWatched(e.target.value as "all"|"true"|"false")}>
           <option value="all">All</option>
           <option value="true">Watched</option>
           <option value="false">Unwatched</option>
@@ -78,7 +77,7 @@ export default function Home() {
             <li key={g.game_id} style={{marginBottom:8}}>
               {g.away_team} @ {g.home_team} — delay {g.delay_minutes} min
               { isWatched 
-                ? <button onClick={()=>onUnwatch(String(g.game_id))}>unWatch</button>
+                ? <button onClick={()=>onUnwatch(String(g.game_id))}>Unwatch</button>
                 : <button onClick={()=>onWatch(String(g.game_id))}>Watch</button>
               }
             </li>
