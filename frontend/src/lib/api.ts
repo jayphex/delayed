@@ -6,8 +6,8 @@ export async function fetchGames(params = "") {
   return r.json();
 }
 
-export async function fetchSummary() {
-    const r = await fetch(`${API_BASE}/stats/summary`)
+export async function fetchSummary(params = "") {
+  const r = await fetch(`${API_BASE}/stats/summary${params ? `?${params}` : ""}`);
     if (!r.ok) throw new Error("/summary failed");
     return r.json();
 }

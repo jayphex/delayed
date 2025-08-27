@@ -1,30 +1,38 @@
 "use client";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { fetchGames, fetchSummary, markWatched } from "../lib/api";
 
 export default function Home() {
   const [games, setGames] = useState<any[]>([]);
   const [watched, setWatched] = useState<"all"|"true"|"false">("all");
   const [loading, setLoading] = useState(false);
-  const [summary, setSummary] = useState<{countDelay: number, avgDelay: number, maxDelay: number} | null>(null);
+  const [summary, setSummary] = useState<{countDelayed: number, avgDelay: number, maxDelay: number} | null>(null);
   const [err, setErr] = useState<string|null>(null);
+  const [team, setTeam] = useState<string>("");
+  const teams = [
+    "ATL", "BKN", "BOS", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GSW", "HOU",
+    "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NOP", "NYK", "OKC",
+    "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS"
+  ];
+  const [date, setDate] = useState<string>("");
 
-  async function loadGames() {
+  async function load() {
     try {
       setLoading(true); setErr(null);
-      const params = watched === "all" ? "" : `watched=${watched}`;
-      setGames(await fetchGames(params));
+      const params = new URLSearchParams();
+      if (watched !== "all") params.append("watched", watched);
+      if (team) params.append("team", team);
+      if (date) params.append("date", date);
+      const query = params.toString();
+      setGames(await fetchGames(query));
+      setSummary(await fetchSummary(query));
     } catch (e:any) { setErr(e.message ?? "error"); }
     finally { setLoading(false); }
   }
 
-  async function loadSummary() {
-    setSummary(await fetchSummary());
-  }
-
   async function onMark(id: string) {
     await markWatched(id);
-    loadGames();
+    load();
   }
 
   return (
@@ -35,8 +43,13 @@ export default function Home() {
           <option value="true">Watched</option>
           <option value="false">Unwatched</option>
         </select>
-        <button onClick={loadGames}>Load Games</button>
-        <button onClick={loadSummary}>Load Summary</button>
+        <select value={team} onChange={(e=>setTeam(e.target.value))}>
+          <option value="team">All Teams</option>
+          {teams.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <input type="date" value={date} onChange={(e=>setDate(e.target.value))}
+          style = {{padding:4, fontSize: 16}} />
+        <button onClick={load}>Games</button>
       </div>
       {loading && <p>Loading…</p>}
       {err && <p style={{color:"red"}}>{err}</p>}
