@@ -2,6 +2,7 @@
 import { Game, Summary, WatchLogEntry } from "../lib/types";
 import { useState } from "react";
 import { fetchGames, fetchSummary, markWatched, markUnwatched, fetchWatchLog } from "../lib/api";
+import Hero from "@/components/Hero";
 
 export default function Home() {
   const [games, setGames] = useState<Game[]>([]);
@@ -45,14 +46,17 @@ export default function Home() {
 
   async function onWatch(id: string) {
     await markWatched(id);
+    load();
   }
 
   async function onUnwatch(id: string) {
     await markUnwatched(id);
+    load();
   }
 
   return (
     <main style={{padding:16}}>
+      <Hero />
       <div style={{display:"flex", gap:8, marginBottom:12}}>
         <select value={watched} onChange={e=>setWatched(e.target.value as "all"|"true"|"false")}>
           <option value="all">All</option>
@@ -65,7 +69,7 @@ export default function Home() {
         </select>
         <input type="date" value={date} onChange={(e=>setDate(e.target.value))}
           style = {{padding:4, fontSize: 16}} />
-        <button onClick={load}>Games</button>
+        <button className="gamesButton" onClick={load}>Games</button>
       </div>
       {loading && <p>Loading…</p>}
       {err && <p style={{color:"red"}}>{err}</p>}
@@ -83,8 +87,8 @@ export default function Home() {
             <li key={g.game_id} style={{marginBottom:8}}>
               {g.away_team} @ {g.home_team} — delay {g.delay_minutes} min
               { isWatched 
-                ? <button onClick={()=>onUnwatch(String(g.game_id))}>Unwatch</button>
-                : <button onClick={()=>onWatch(String(g.game_id))}>Watch</button>
+                ? <button className="unwatchButton" onClick={()=>onUnwatch(String(g.game_id))}>Unwatch</button>
+                : <button className="watchButton" onClick={()=>onWatch(String(g.game_id))}>Watch</button>
               }
             </li>
           );
