@@ -4,3 +4,4 @@ pandas
 python-dotenv
 nba_api
 sqlmodel
+requests
