@@ -57,7 +57,7 @@ export default function Home() {
   return (
     <main style={{padding:16}}>
       <Hero />
-      <div style={{display:"flex", gap:8, marginBottom:12}}>
+      <div className="filters" style={{display:"flex", gap:8, marginBottom:12}}>
         <select value={watched} onChange={e=>setWatched(e.target.value as "all"|"true"|"false")}>
           <option value="all">All</option>
           <option value="true">Watched</option>
@@ -74,11 +74,11 @@ export default function Home() {
       {loading && <p>Loading…</p>}
       {err && <p style={{color:"red"}}>{err}</p>}
       {summary && (
-        <p>
-          Delayed: {summary.countDelayed} |
-          Average: {summary.avgDelay.toFixed(1)} |
-          Max: {summary.maxDelay}
-        </p>
+        <div className="summary">
+          <p><strong>Games Delayed:</strong> {summary.countDelayed}</p>
+          <p><strong>Average Delay:</strong> {summary.avgDelay.toFixed(1)}</p>
+          <p><strong>Most Delayed Game:</strong> {summary.maxDelay}</p>
+        </div>
       )}
       <ul>
         {games.map((g)=> {

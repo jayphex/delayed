@@ -57,14 +57,18 @@ img {
   font-weight: bold;
 }
 
-.gamesButton {
-  background-color: #0070f3;
+.gamesButton, .watchButton, .unwatchButton {
   color: white;
   border: none;
   padding: 4px 12px;
   font-size: 16px;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.gamesButton {
+  background-color: #0070f3;
+  margin-bottom: 12px;
 }
 
 .gamesButton:hover {
@@ -73,12 +77,6 @@ img {
 
 .watchButton {
   background-color: #28a745;
-  color: white;
-  border: none;
-  padding: 4px 12px;
-  font-size: 16px;
-  border-radius: 4px;
-  cursor: pointer;
 }
 
 .watchButton:hover {
@@ -87,14 +85,43 @@ img {
 
 .unwatchButton {
   background-color: #dc3545;
-  color: white;
-  border: none;
-  padding: 4px 12px;
-  font-size: 16px;
-  border-radius: 4px;
-  cursor: pointer;
 }
 
 .unwatchButton:hover {
   background-color: #bd2130;
+}
+
+h1 { margin-bottom: 16px; }
+
+.filters { 
+  margin-bottom: 12px;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+
+.summary { 
+  margin-bottom: 16px;
+  padding: 8px;
+  background: #f0f0f0;;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.summary p {
+  margin: 4px 0;
+}
+
+.summary strong { font-weight: 600;}
+
+li {
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
