@@ -1,69 +1,92 @@
 # Delayed
 
-Delayed is a small NBA tip-off tracker. It compares each game's scheduled start
-time with the observed tip-off time, then lets you mark which games you watched
-so you can see how many minutes you have lost waiting for late starts.
+Delayed is an NBA tip-off delay tracker designed to run as a fully hosted Vercel
+application. Users should only ever interact with the deployed site and API.
 
-The idea is simple: NBA games often start later than the listed tip time, and
-this project is meant to turn that annoyance into real data you can track over
-time.
+## Production architecture
 
-## What works now
+- `frontend/`: Next.js dashboard deployed as a Vercel project
+- `api/`: FastAPI backend deployed as a separate Vercel project
+- Postgres: durable storage for games and watch-log data
+- Vercel Cron: scheduled syncs that refresh game data inside the API project
 
-- A FastAPI backend that reads game data from `data/games.csv` and falls back to
-  `data/sample_games.csv`
-- Delay calculations based on `scheduled_start` versus `actual_start`
-- A persistent watch log stored in `data/watch_log.json`
-- A Next.js dashboard for filtering games and tracking total wasted time
-- A polling script that can write live scoreboard data back into `data/games.csv`
+There is no shared local-file storage in the production design. That matters
+because Vercel Functions are serverless and do not provide a durable shared
+filesystem for application state.
 
-## Project layout
+## How it should work for real users
 
-- `api/app/main.py`: API endpoints for games, summary stats, and watched games
-- `frontend/src/app/page.tsx`: dashboard UI
-- `scripts/poll_games.py`: scoreboard poller
-- `data/sample_games.csv`: starter dataset
+1. A user visits the frontend on Vercel.
+2. The frontend calls the deployed FastAPI backend on Vercel.
+3. The backend reads and writes durable data in Postgres.
+4. Vercel Cron hits `/internal/sync-games` on a schedule to keep game data fresh.
 
-## Run it locally
+Nobody using the app should need to run scripts or services on their laptop.
 
-### Backend
+## Vercel setup
 
-Install the Python requirements in your environment, then run:
+Create two Vercel projects from this same repository:
 
-```bash
-uvicorn api.app.main:app --reload
-```
+1. Frontend project
+   Root Directory: `frontend`
 
-The API serves:
+2. API project
+   Root Directory: `api`
 
-- `GET /games`
-- `GET /stats/summary`
-- `GET /watchlog`
-- `POST /watchlog`
-- `DELETE /watchlog/{game_id}`
+Vercel monorepo docs:
+https://vercel.com/docs/monorepos
 
-### Frontend
+FastAPI on Vercel:
+https://vercel.com/docs/frameworks/backend/fastapi
 
-From `frontend/`:
+## Required environment variables
 
-```bash
-npm install
-NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000 npm run dev
-```
+### API project
 
-### Poll live games
+Set these in the Vercel dashboard for the `api` project:
 
-Once `nba_api` is installed, you can populate `data/games.csv` with:
+- `DATABASE_URL`
+- `CORS_ORIGINS`
+- `CRON_SECRET` (recommended)
+- `DEFAULT_USER_ID` (optional)
 
-```bash
-python3 scripts/poll_games.py --once
-```
+Example values are shown in [api/.env.example](/Users/johnmuhigi/Desktop/projects/delayed/api/.env.example).
 
-Or keep it running:
+### Frontend project
 
-```bash
-python3 scripts/poll_games.py --interval 60
-```
+Set this in the Vercel dashboard for the `frontend` project:
 
-The poller records the first observed live state as the game's `actual_start`,
-which makes the measured delay accurate to within the polling interval.
+- `NEXT_PUBLIC_API_BASE=https://your-api-project.vercel.app`
+
+Example:
+[frontend/.env.example](/Users/johnmuhigi/Desktop/projects/delayed/frontend/.env.example)
+
+## Database
+
+Use a hosted Postgres database for production. The cleanest option is attaching
+Postgres from the Vercel Marketplace, though any hosted Postgres provider works
+as long as it gives you a standard connection string for `DATABASE_URL`.
+
+Vercel storage overview:
+https://vercel.com/docs/storage
+
+Why local persistence is not appropriate on Vercel:
+https://vercel.com/guides/is-sqlite-supported-in-vercel
+
+## Cron syncing
+
+The API project includes [api/vercel.json](/Users/johnmuhigi/Desktop/projects/delayed/api/vercel.json),
+which schedules `/internal/sync-games`.
+
+If `CRON_SECRET` is set, Vercel will automatically send it as a Bearer token to
+the cron endpoint.
+
+Cron docs:
+https://vercel.com/docs/cron-jobs
+https://vercel.com/docs/cron-jobs/manage-cron-jobs
+
+## Important note
+
+This repo is now configured around hosted deployment. The frontend expects
+`NEXT_PUBLIC_API_BASE`, and the API expects `DATABASE_URL`. If those are missing,
+the projects should fail fast rather than silently fall back to local state.

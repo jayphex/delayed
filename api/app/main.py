@@ -1,175 +1,131 @@
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
-from pathlib import Path
+from contextlib import asynccontextmanager
+from datetime import date, datetime, timezone
+from typing import Optional
 
-import pandas as pd
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import or_
+from sqlmodel import Session, select
 
-from .schemas import GameOut, SummaryOut, WatchLogCreate, WatchLogEntry
+from .config import get_settings
+from .db.database import get_session, prepare_database
+from .db.models import Game, WatchLog
+from .schemas import GameOut, SummaryOut, SyncResponse, WatchLogCreate, WatchLogEntry
+from .sync import sync_games_for_date
 
-app = FastAPI(title="Delayed API")
+settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    prepare_database()
+    yield
+
+
+app = FastAPI(title="Delayed API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins or ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-DATA_DIR = BASE_DIR / "data"
-PRIMARY_GAMES_PATH = DATA_DIR / "games.csv"
-SAMPLE_GAMES_PATH = DATA_DIR / "sample_games.csv"
-WATCH_LOG_PATH = DATA_DIR / "watch_log.json"
-DEFAULT_USER_ID = "demo"
-GAME_COLUMNS = [
-    "game_id",
-    "date",
-    "home_team",
-    "away_team",
-    "scheduled_start",
-    "actual_start",
-    "status",
-]
 
-
-def _ensure_data_dir() -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def _validate_model(model_class, payload):
-    if hasattr(model_class, "model_validate"):
-        return model_class.model_validate(payload)
-    return model_class.parse_obj(payload)
-
-
-def _dump_model(model) -> dict:
-    if hasattr(model, "model_dump"):
-        return model.model_dump(mode="json")
-    return json.loads(model.json())
-
-
-def _games_path() -> Path:
-    return PRIMARY_GAMES_PATH if PRIMARY_GAMES_PATH.exists() else SAMPLE_GAMES_PATH
-
-
-def _iso_or_none(value: object) -> str | None:
+def to_iso(value: Optional[datetime]) -> Optional[str]:
     if value is None:
         return None
-    timestamp = pd.to_datetime(value, utc=True, errors="coerce")
-    if pd.isna(timestamp):
-        return None
-    return timestamp.isoformat().replace("+00:00", "Z")
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _minutes_between(start: object, end: object) -> float:
-    start_ts = pd.to_datetime(start, utc=True, errors="coerce")
-    end_ts = pd.to_datetime(end, utc=True, errors="coerce")
-    if pd.isna(start_ts) or pd.isna(end_ts):
+def delay_minutes(game: Game) -> float:
+    if not game.scheduled_start or not game.actual_start:
         return 0.0
-    return round(max((end_ts - start_ts).total_seconds() / 60, 0.0), 1)
+    delta = (game.actual_start - game.scheduled_start).total_seconds() / 60
+    return round(max(delta, 0.0), 1)
 
 
-def _normalize_games(df: pd.DataFrame) -> pd.DataFrame:
-    working = df.copy()
-    for column in GAME_COLUMNS:
-        if column not in working.columns:
-            working[column] = None
-
-    working = working[GAME_COLUMNS]
-    working["game_id"] = working["game_id"].astype(str)
-    working["home_team"] = working["home_team"].fillna("").astype(str).str.upper()
-    working["away_team"] = working["away_team"].fillna("").astype(str).str.upper()
-    working["status"] = working["status"].fillna("scheduled").astype(str).str.lower()
-
-    scheduled = pd.to_datetime(working["scheduled_start"], utc=True, errors="coerce")
-    actual = pd.to_datetime(working["actual_start"], utc=True, errors="coerce")
-
-    inferred_date = scheduled.dt.strftime("%Y-%m-%d")
-    working["date"] = working["date"].fillna(inferred_date).fillna("")
-    working["scheduled_start"] = scheduled.map(_iso_or_none)
-    working["actual_start"] = actual.map(_iso_or_none)
-    working["delay_minutes"] = [
-        _minutes_between(start, end)
-        for start, end in zip(working["scheduled_start"], working["actual_start"])
-    ]
-    working["started_late"] = working["delay_minutes"] > 0
-    working["tipoff_state"] = working.apply(
-        lambda row: "scheduled"
-        if not row["actual_start"]
-        else "late"
-        if row["delay_minutes"] > 0
-        else "on_time",
-        axis=1,
-    )
-
-    working = working.sort_values(
-        by=["date", "delay_minutes", "scheduled_start"],
-        ascending=[False, False, True],
-        na_position="last",
-    )
-    return working.where(working.notna(), None)
-
-
-def load_games() -> pd.DataFrame:
-    path = _games_path()
-    if not path.exists():
-        return _normalize_games(pd.DataFrame(columns=GAME_COLUMNS))
-    df = pd.read_csv(path)
-    return _normalize_games(df)
-
-
-def load_watch_log() -> list[WatchLogEntry]:
-    _ensure_data_dir()
-    if not WATCH_LOG_PATH.exists():
-        return []
-
-    raw_entries = json.loads(WATCH_LOG_PATH.read_text() or "[]")
-    entries: list[WatchLogEntry] = []
-    for raw in raw_entries:
-        try:
-            entries.append(_validate_model(WatchLogEntry, raw))
-        except Exception:
-            continue
-    return entries
-
-
-def save_watch_log(entries: list[WatchLogEntry]) -> None:
-    _ensure_data_dir()
-    WATCH_LOG_PATH.write_text(
-        json.dumps([_dump_model(entry) for entry in entries], indent=2)
+def serialize_game(game: Game, watched_ids: set[str]) -> GameOut:
+    delay = delay_minutes(game)
+    return GameOut(
+        game_id=game.game_id,
+        date=game.date.isoformat(),
+        home_team=game.home_team,
+        away_team=game.away_team,
+        scheduled_start=to_iso(game.scheduled_start),
+        actual_start=to_iso(game.actual_start),
+        status=game.status,
+        delay_minutes=delay,
+        started_late=delay > 0,
+        tipoff_state="scheduled" if not game.actual_start else "late" if delay > 0 else "on_time",
+        watched=game.game_id in watched_ids,
     )
 
 
-def watched_ids_for(user_id: str = DEFAULT_USER_ID) -> set[str]:
-    return {entry.game_id for entry in load_watch_log() if entry.user_id == user_id}
+def serialize_watch_log(entry: WatchLog) -> WatchLogEntry:
+    return WatchLogEntry(
+        id=entry.id or 0,
+        user_id=entry.user_id,
+        game_id=entry.game_id,
+        watched_at=entry.watched_at,
+    )
+
+
+def user_watch_ids(session: Session, user_id: str) -> set[str]:
+    watched_rows = session.exec(
+        select(WatchLog.game_id).where(WatchLog.user_id == user_id)
+    ).all()
+    return set(watched_rows)
 
 
 def filtered_games(
-    date: str | None,
-    team: str | None,
-    watched: bool | None,
+    session: Session,
+    *,
+    game_date: Optional[date],
+    team: Optional[str],
+    watched: Optional[bool],
     min_delay: float,
-) -> pd.DataFrame:
-    df = load_games()
-    watched_ids = watched_ids_for()
-    df["watched"] = df["game_id"].isin(watched_ids)
-
-    if date:
-        df = df[df["date"] == date]
+) -> list[GameOut]:
+    statement = select(Game)
+    if game_date:
+        statement = statement.where(Game.date == game_date)
     if team:
         team_code = team.upper()
-        df = df[(df["home_team"] == team_code) | (df["away_team"] == team_code)]
-    if watched is True:
-        df = df[df["watched"]]
-    elif watched is False:
-        df = df[~df["watched"]]
-    if min_delay > 0:
-        df = df[df["delay_minutes"] >= min_delay]
+        statement = statement.where(
+            or_(Game.home_team == team_code, Game.away_team == team_code)
+        )
 
-    return df.where(df.notna(), None)
+    games = session.exec(statement.order_by(Game.date.desc(), Game.scheduled_start)).all()
+    watched_ids = user_watch_ids(session, settings.default_user_id)
+    serialized = [serialize_game(game, watched_ids) for game in games]
+
+    if watched is True:
+        serialized = [game for game in serialized if game.watched]
+    elif watched is False:
+        serialized = [game for game in serialized if not game.watched]
+
+    if min_delay > 0:
+        serialized = [game for game in serialized if game.delay_minutes >= min_delay]
+
+    serialized.sort(
+        key=lambda game: (game.date, game.delay_minutes, game.scheduled_start or ""),
+        reverse=True,
+    )
+    return serialized
+
+
+def require_sync_token(request: Request, token: Optional[str]) -> None:
+    expected = settings.sync_token
+    if not expected:
+        return
+
+    auth_header = request.headers.get("authorization", "")
+    bearer = auth_header[7:] if auth_header.lower().startswith("bearer ") else None
+    header_token = request.headers.get("x-sync-token")
+    candidate = token or header_token or bearer
+    if candidate != expected:
+        raise HTTPException(status_code=401, detail="Invalid sync token.")
 
 
 @app.get("/")
@@ -177,27 +133,44 @@ def root() -> dict[str, str]:
     return {"message": "Delayed API is running."}
 
 
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 @app.get("/games", response_model=list[GameOut])
 def get_games(
-    date: str | None = None,
-    team: str | None = None,
-    watched: bool | None = None,
+    session: Session = Depends(get_session),
+    game_date: Optional[date] = Query(None, alias="date"),
+    team: Optional[str] = None,
+    watched: Optional[bool] = None,
     minDelay: float = Query(0, ge=0),
 ) -> list[GameOut]:
-    df = filtered_games(date=date, team=team, watched=watched, min_delay=minDelay)
-    return [_validate_model(GameOut, record) for record in df.to_dict(orient="records")]
+    return filtered_games(
+        session,
+        game_date=game_date,
+        team=team,
+        watched=watched,
+        min_delay=minDelay,
+    )
 
 
 @app.get("/stats/summary", response_model=SummaryOut)
 def summary(
-    date: str | None = None,
-    team: str | None = None,
-    watched: bool | None = None,
+    session: Session = Depends(get_session),
+    game_date: Optional[date] = Query(None, alias="date"),
+    team: Optional[str] = None,
+    watched: Optional[bool] = None,
     minDelay: float = Query(0, ge=0),
 ) -> SummaryOut:
-    df = filtered_games(date=date, team=team, watched=watched, min_delay=minDelay)
-
-    if df.empty:
+    games = filtered_games(
+        session,
+        game_date=game_date,
+        team=team,
+        watched=watched,
+        min_delay=minDelay,
+    )
+    if not games:
         return SummaryOut(
             games=0,
             countDelayed=0,
@@ -208,58 +181,90 @@ def summary(
             watchedDelayMinutes=0,
         )
 
+    watched_games = [game for game in games if game.watched]
+    delays = [game.delay_minutes for game in games]
+    watched_delays = [game.delay_minutes for game in watched_games]
+
     return SummaryOut(
-        games=int(len(df)),
-        countDelayed=int((df["delay_minutes"] > 0).sum()),
-        avgDelay=round(float(df["delay_minutes"].mean()), 1),
-        maxDelay=round(float(df["delay_minutes"].max()), 1),
-        watchedGames=int(df["watched"].sum()),
-        totalDelayMinutes=round(float(df["delay_minutes"].sum()), 1),
-        watchedDelayMinutes=round(float(df.loc[df["watched"], "delay_minutes"].sum()), 1),
+        games=len(games),
+        countDelayed=sum(1 for game in games if game.delay_minutes > 0),
+        avgDelay=round(sum(delays) / len(delays), 1),
+        maxDelay=round(max(delays), 1),
+        watchedGames=len(watched_games),
+        totalDelayMinutes=round(sum(delays), 1),
+        watchedDelayMinutes=round(sum(watched_delays), 1),
     )
 
 
 @app.get("/watchlog", response_model=list[WatchLogEntry])
-def get_watchlog() -> list[WatchLogEntry]:
-    return load_watch_log()
+def get_watchlog(session: Session = Depends(get_session)) -> list[WatchLogEntry]:
+    entries = session.exec(
+        select(WatchLog)
+        .where(WatchLog.user_id == settings.default_user_id)
+        .order_by(WatchLog.watched_at.desc())
+    ).all()
+    return [serialize_watch_log(entry) for entry in entries]
 
 
 @app.post("/watchlog", response_model=WatchLogEntry)
-def post_watchlog(payload: WatchLogCreate = Body(...)) -> WatchLogEntry:
-    entries = load_watch_log()
-    if any(
-        entry.game_id == payload.game_id and entry.user_id == DEFAULT_USER_ID
-        for entry in entries
-    ):
-        return next(
-            entry
-            for entry in entries
-            if entry.game_id == payload.game_id and entry.user_id == DEFAULT_USER_ID
-        )
-
-    game_ids = set(load_games()["game_id"].astype(str))
-    if payload.game_id not in game_ids:
+def post_watchlog(
+    payload: WatchLogCreate,
+    session: Session = Depends(get_session),
+) -> WatchLogEntry:
+    game = session.get(Game, payload.game_id)
+    if not game:
         raise HTTPException(status_code=404, detail="Unknown game id.")
 
-    entry = WatchLogEntry(
-        id=max((existing.id for existing in entries), default=0) + 1,
-        user_id=DEFAULT_USER_ID,
+    existing = session.exec(
+        select(WatchLog).where(
+            WatchLog.user_id == settings.default_user_id,
+            WatchLog.game_id == payload.game_id,
+        )
+    ).first()
+    if existing:
+        return serialize_watch_log(existing)
+
+    entry = WatchLog(
+        user_id=settings.default_user_id,
         game_id=payload.game_id,
         watched_at=datetime.now(timezone.utc),
     )
-    entries.append(entry)
-    save_watch_log(entries)
-    return entry
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return serialize_watch_log(entry)
 
 
 @app.delete("/watchlog/{game_id}")
-def unwatch_game(game_id: str) -> dict[str, int]:
-    entries = load_watch_log()
-    kept_entries = [
-        entry
-        for entry in entries
-        if not (entry.game_id == game_id and entry.user_id == DEFAULT_USER_ID)
-    ]
-    removed = len(entries) - len(kept_entries)
-    save_watch_log(kept_entries)
-    return {"removed": removed}
+def unwatch_game(
+    game_id: str,
+    session: Session = Depends(get_session),
+) -> dict[str, int]:
+    entries = session.exec(
+        select(WatchLog).where(
+            WatchLog.user_id == settings.default_user_id,
+            WatchLog.game_id == game_id,
+        )
+    ).all()
+    for entry in entries:
+        session.delete(entry)
+    session.commit()
+    return {"removed": len(entries)}
+
+
+@app.api_route("/internal/sync-games", methods=["GET", "POST"], response_model=SyncResponse)
+def sync_games(
+    request: Request,
+    session: Session = Depends(get_session),
+    game_date: Optional[date] = Query(None, alias="date"),
+    token: Optional[str] = None,
+) -> SyncResponse:
+    require_sync_token(request, token)
+    target_date = game_date or datetime.now(timezone.utc).date()
+    observed_at = datetime.now(timezone.utc)
+    synced_games = sync_games_for_date(session, target_date, observed_at=observed_at)
+    return SyncResponse(
+        date=target_date.isoformat(),
+        synced_games=synced_games,
+        observed_at=to_iso(observed_at) or "",
+    )

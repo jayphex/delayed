@@ -1,7 +1,12 @@
 import { Game, Summary, WatchLogEntry } from "./types";
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
+const configuredBase = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "");
+
+if (!configuredBase) {
+  throw new Error("NEXT_PUBLIC_API_BASE is required for the frontend.");
+}
+
+export const API_BASE = configuredBase;
 
 async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {

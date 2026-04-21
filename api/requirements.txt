@@ -1,7 +1,7 @@
 fastapi
 uvicorn[standard]
-pandas
 python-dotenv
 nba_api
 sqlmodel
 requests
+psycopg2-binary

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -8,8 +9,8 @@ class GameOut(BaseModel):
     date: str
     home_team: str
     away_team: str
-    scheduled_start: str | None
-    actual_start: str | None
+    scheduled_start: Optional[str]
+    actual_start: Optional[str]
     status: str
     delay_minutes: float
     started_late: bool
@@ -36,3 +37,9 @@ class WatchLogEntry(BaseModel):
 
 class WatchLogCreate(BaseModel):
     game_id: str
+
+
+class SyncResponse(BaseModel):
+    date: str
+    synced_games: int
+    observed_at: str
