@@ -1,6 +1,7 @@
 # Environment files
 .env
 *.env
+.vercel/
 
 # Python cache
 __pycache__/
