@@ -1,7 +1,9 @@
-fastapi
-uvicorn[standard]
-python-dotenv
-nba_api
-sqlmodel
-requests
-psycopg2-binary
+fastapi==0.135.3
+uvicorn[standard]==0.43.0
+python-dotenv==1.2.2
+nba_api==1.11.4
+sqlmodel==0.0.38
+sqlalchemy==2.0.49
+pydantic==2.12.5
+requests==2.33.1
+psycopg2-binary==2.9.11

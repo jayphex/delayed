@@ -79,6 +79,28 @@ def user_watch_ids(session: Session, user_id: str) -> set[str]:
     return set(watched_rows)
 
 
+def ensure_games_for_date(session: Session, game_date: Optional[date]) -> None:
+    if not settings.auto_sync_on_empty:
+        return
+
+    target_date = game_date or datetime.now(timezone.utc).date()
+    existing = session.exec(
+        select(Game.game_id).where(Game.date == target_date).limit(1)
+    ).first()
+    if existing:
+        return
+
+    try:
+        sync_games_for_date(
+            session,
+            target_date,
+            observed_at=datetime.now(timezone.utc),
+        )
+    except Exception:
+        # Failing open here keeps the read endpoints usable even if the NBA API is unavailable.
+        session.rollback()
+
+
 def filtered_games(
     session: Session,
     *,
@@ -87,6 +109,8 @@ def filtered_games(
     watched: Optional[bool],
     min_delay: float,
 ) -> list[GameOut]:
+    ensure_games_for_date(session, game_date)
+
     statement = select(Game)
     if game_date:
         statement = statement.where(Game.date == game_date)
@@ -163,6 +187,8 @@ def summary(
     watched: Optional[bool] = None,
     minDelay: float = Query(0, ge=0),
 ) -> SummaryOut:
+    ensure_games_for_date(session, game_date)
+
     games = filtered_games(
         session,
         game_date=game_date,

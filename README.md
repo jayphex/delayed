@@ -49,6 +49,7 @@ Set these in the Vercel dashboard for the `api` project:
 - `CORS_ORIGINS`
 - `CRON_SECRET` (recommended)
 - `DEFAULT_USER_ID` (optional)
+- `AUTO_SYNC_ON_EMPTY=true` (recommended)
 
 Example values are shown in [api/.env.example](/Users/johnmuhigi/Desktop/projects/delayed/api/.env.example).
 
@@ -81,6 +82,11 @@ which schedules `/internal/sync-games`.
 If `CRON_SECRET` is set, Vercel will automatically send it as a Bearer token to
 the cron endpoint.
 
+The API also supports `AUTO_SYNC_ON_EMPTY=true`, which lets the first request
+for a date trigger a one-time sync if the database does not yet have games for
+that date. This helps new deployments avoid showing an empty board before cron
+has had a chance to run.
+
 Cron docs:
 https://vercel.com/docs/cron-jobs
 https://vercel.com/docs/cron-jobs/manage-cron-jobs
@@ -90,3 +96,16 @@ https://vercel.com/docs/cron-jobs/manage-cron-jobs
 This repo is now configured around hosted deployment. The frontend expects
 `NEXT_PUBLIC_API_BASE`, and the API expects `DATABASE_URL`. If those are missing,
 the projects should fail fast rather than silently fall back to local state.
+
+## Practical Vercel rollout order
+
+1. Push the latest repo changes to GitHub.
+2. Create the `api` Vercel project with root directory `api`.
+3. Attach Postgres to the `api` project and set:
+   `DATABASE_URL`, `CORS_ORIGINS`, `CRON_SECRET`, `AUTO_SYNC_ON_EMPTY=true`
+4. Deploy the `api` project and confirm `/health` responds successfully.
+5. Create the `frontend` Vercel project with root directory `frontend`.
+6. Set `NEXT_PUBLIC_API_BASE` to the deployed API URL.
+7. Deploy the `frontend` project.
+8. Open the site and verify the board loads. If cron has not run yet, the first
+   request should trigger the empty-date bootstrap sync.

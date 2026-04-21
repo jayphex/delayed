@@ -36,13 +36,16 @@ class Settings:
     cors_origins: list[str]
     default_user_id: str
     sync_token: Optional[str]
+    auto_sync_on_empty: bool
 
 
 @lru_cache
 def get_settings() -> Settings:
+    auto_sync_raw = os.getenv("AUTO_SYNC_ON_EMPTY", "true").strip().lower()
     return Settings(
         database_url=_database_url(),
         cors_origins=_csv_env("CORS_ORIGINS", "http://localhost:3000"),
         default_user_id=os.getenv("DEFAULT_USER_ID", "demo"),
         sync_token=os.getenv("CRON_SECRET") or os.getenv("SYNC_TOKEN"),
+        auto_sync_on_empty=auto_sync_raw in {"1", "true", "yes", "on"},
     )
