@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+
 import "./globals.css";
 
-
 export const metadata: Metadata = {
-  title: "nbadelayed",
-  description: "Track delayed NBA games",
+  title: "Delayed",
+  description: "Track how late NBA games tip compared to their scheduled start time.",
 };
- 
+
 function RootLayout({
   children,
 }: Readonly<{
@@ -15,9 +14,7 @@ function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

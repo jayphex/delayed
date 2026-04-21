@@ -1,39 +1,47 @@
-import { WatchLogEntry } from "./types";
+import { Game, Summary, WatchLogEntry } from "./types";
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE!;
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
 
-export async function fetchGames(params = "") {
-  const r = await fetch(`${API_BASE}/games${params ? `?${params}` : ""}`);
-  if (!r.ok) throw new Error("/games failed");
-  return r.json();
+async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `${path} failed`);
+  }
+
+  return response.json() as Promise<T>;
 }
 
-export async function fetchSummary(params = "") {
-  const r = await fetch(`${API_BASE}/stats/summary${params ? `?${params}` : ""}`);
-    if (!r.ok) throw new Error("/summary failed");
-    return r.json();
+export async function fetchGames(params = ""): Promise<Game[]> {
+  return readJson<Game[]>(`/games${params ? `?${params}` : ""}`);
+}
+
+export async function fetchSummary(params = ""): Promise<Summary> {
+  return readJson<Summary>(`/stats/summary${params ? `?${params}` : ""}`);
 }
 
 export async function fetchWatchLog(): Promise<WatchLogEntry[]> {
-  const r = await fetch(`${API_BASE}/watchlog`);
-    if (!r.ok) throw new Error("/watchlog failed");
-    return r.json();
+  return readJson<WatchLogEntry[]>("/watchlog");
 }
 
 export async function markWatched(game_id: string): Promise<WatchLogEntry> {
-  const r = await fetch(`${API_BASE}/watchlog`, {
+  return readJson<WatchLogEntry>("/watchlog", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ game_id }),
   });
-  if (!r.ok) throw new Error("/watchlog failed");
-  return r.json();
 }
 
 export async function markUnwatched(game_id: string): Promise<{ removed: number }> {
-  const r = await fetch(`${API_BASE}/watchlog/${game_id}`, {
+  return readJson<{ removed: number }>(`/watchlog/${game_id}`, {
     method: "DELETE",
   });
-  if (!r.ok) throw new Error("/watchlog failed");
-  return r.json();
 }
